@@ -1,6 +1,6 @@
 # specimen
 
-Risk register and POA&M for compliance programs.
+Every risk gets a stable `RISK-NNN` identifier. None are reused after deletion. Severity is derived, not set — pass likelihood and impact, `specimen` computes the rest.
 
 ```bash
 go get github.com/Formulary-Labs/specimen
@@ -8,7 +8,7 @@ go get github.com/Formulary-Labs/specimen
 
 ## What it does
 
-`specimen` manages a program's risk register as a JSON file at `data/[program]/risks.json`. It assigns stable `RISK-NNN` identifiers that are never reused after deletion, derives severity from a 3×3 likelihood/impact matrix, and supports bulk ingestion of post-audit findings via feed-forward.
+`specimen` manages a program's risk register as a JSON file at `data/[program]/risks.json`. It assigns stable `RISK-NNN` identifiers, derives severity from a 3×3 likelihood/impact matrix, and supports bulk ingestion of post-audit findings via feed-forward.
 
 ## Usage
 

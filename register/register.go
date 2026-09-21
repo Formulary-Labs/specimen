@@ -20,12 +20,13 @@ import (
 type Source string
 
 const (
-	SourceCoverageGap  Source = "coverage_gap"
-	SourceEvidenceGap  Source = "evidence_gap"
-	SourceOwnerGap     Source = "owner_gap"
-	SourceExplicit     Source = "explicit"
-	SourceInferred     Source = "inferred"
-	SourceFeedForward  Source = "feed_forward"
+	SourceCoverageGap Source = "coverage_gap"
+	SourceEvidenceGap Source = "evidence_gap"
+	SourceOwnerGap    Source = "owner_gap"
+	SourceExplicit    Source = "explicit"
+	SourceInferred    Source = "inferred"
+	SourceFeedForward Source = "feed_forward"
+	SourceCatalog     Source = "catalog" // imported from a gemara RiskCatalog
 )
 
 // Status is the current disposition of a risk.
@@ -202,6 +203,64 @@ type FeedForwardEntry struct {
 	Severity        string `json:"severity"`
 	CorrectiveAction string `json:"corrective_action"`
 	Owner           string `json:"owner"`
+}
+
+// Update modifies fields on an existing risk entry by ID.
+// Only non-zero values in the patch are applied.
+func (r *Register) Update(id, newStatus, owner, notes string) error {
+	for i := range r.Risks {
+		if r.Risks[i].ID == id {
+			if newStatus != "" {
+				r.Risks[i].Status = Status(newStatus)
+			}
+			if owner != "" {
+				r.Risks[i].Owner = owner
+			}
+			if notes != "" {
+				r.Risks[i].Notes = append(r.Risks[i].Notes, Note{
+					Date: time.Now().UTC().Format("2006-01-02"),
+					Text: notes,
+				})
+			}
+			r.Risks[i].Updated = time.Now().UTC()
+			return nil
+		}
+	}
+	return fmt.Errorf("risk %q not found", id)
+}
+
+// Close marks a risk as closed and records the resolution rationale.
+func (r *Register) Close(id, resolution string) error {
+	for i := range r.Risks {
+		if r.Risks[i].ID == id {
+			r.Risks[i].Status = StatusClosed
+			if resolution != "" {
+				r.Risks[i].Notes = append(r.Risks[i].Notes, Note{
+					Date: time.Now().UTC().Format("2006-01-02"),
+					Text: "RESOLUTION: " + resolution,
+				})
+			}
+			r.Risks[i].Updated = time.Now().UTC()
+			return nil
+		}
+	}
+	return fmt.Errorf("risk %q not found", id)
+}
+
+// ParseFeedForward parses a post-audit feed-forward JSON without modifying
+// the register. Use this for dry-run to count what would be added.
+func ParseFeedForward(data []byte) ([]FeedForwardEntry, error) {
+	var entries []FeedForwardEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		var wrapper struct {
+			Findings []FeedForwardEntry `json:"findings"`
+		}
+		if err2 := json.Unmarshal(data, &wrapper); err2 != nil {
+			return nil, fmt.Errorf("parsing feed-forward JSON: %w", err)
+		}
+		entries = wrapper.Findings
+	}
+	return entries, nil
 }
 
 // IngestFeedForward reads a post-audit feed-forward JSON and adds each

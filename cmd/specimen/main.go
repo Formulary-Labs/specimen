@@ -14,8 +14,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Formulary-Labs/specimen/register"
+	"github.com/Formulary-Labs/substrate/artifact"
 	"github.com/Formulary-Labs/substrate/exit"
 	"github.com/Formulary-Labs/substrate/provenance"
 )
@@ -40,8 +42,16 @@ func main() {
 		runAdd(os.Args[2:])
 	case "list":
 		runList(os.Args[2:])
+	case "update":
+		runUpdate(os.Args[2:])
+	case "close":
+		runClose(os.Args[2:])
+	case "elevate":
+		runElevate(os.Args[2:])
 	case "ingest":
 		runIngest(os.Args[2:])
+	case "catalog":
+		runCatalog(os.Args[2:])
 	case "status":
 		runStatus(os.Args[2:])
 	case "--version", "-v", "version":
@@ -120,6 +130,98 @@ func runAdd(args []string) {
 	})
 }
 
+func runUpdate(args []string) {
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	var (
+		program = fs.String("program", "", "Program slug")
+		id      = fs.String("id", "", "Risk ID to update (required)")
+		status  = fs.String("status", "", "New status: open, accepted, mitigated, closed")
+		owner   = fs.String("owner", "", "New owner")
+		notes   = fs.String("notes", "", "Append a progress note")
+	)
+	fs.Parse(args) //nolint:errcheck
+
+	if *id == "" {
+		fmt.Fprintln(os.Stderr, "error: --id is required")
+		os.Exit(exit.ToolError)
+	}
+	path := registerPath(*program)
+	reg, err := register.Load(path, *program)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading register: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	if err := reg.Update(*id, *status, *owner, *notes); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	if err := reg.Save(path); err != nil {
+		fmt.Fprintf(os.Stderr, "error saving register: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	fmt.Printf(`{"id": %q, "updated": true}`+"\n", *id)
+}
+
+func runClose(args []string) {
+	fs := flag.NewFlagSet("close", flag.ExitOnError)
+	var (
+		program    = fs.String("program", "", "Program slug")
+		id         = fs.String("id", "", "Risk ID to close (required)")
+		resolution = fs.String("resolution", "", "Resolution rationale")
+	)
+	fs.Parse(args) //nolint:errcheck
+
+	if *id == "" {
+		fmt.Fprintln(os.Stderr, "error: --id is required")
+		os.Exit(exit.ToolError)
+	}
+	path := registerPath(*program)
+	reg, err := register.Load(path, *program)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading register: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	if err := reg.Close(*id, *resolution); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	if err := reg.Save(path); err != nil {
+		fmt.Fprintf(os.Stderr, "error saving register: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	fmt.Printf(`{"id": %q, "status": "closed"}`+"\n", *id)
+}
+
+func runElevate(args []string) {
+	fs := flag.NewFlagSet("elevate", flag.ExitOnError)
+	var (
+		program     = fs.String("program", "", "Program slug")
+		evalLogPath = fs.String("evaluation-log", "", "Path to assay EvaluationLog JSON (required)")
+	)
+	fs.Parse(args) //nolint:errcheck
+
+	if *evalLogPath == "" {
+		fmt.Fprintln(os.Stderr, "error: --evaluation-log is required")
+		os.Exit(exit.ToolError)
+	}
+	path := registerPath(*program)
+	reg, err := register.Load(path, *program)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading register: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	ids, err := reg.ElevateFromEvaluationLog(*evalLogPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error elevating from evaluation log: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	if err := reg.Save(path); err != nil {
+		fmt.Fprintf(os.Stderr, "error saving register: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+	fmt.Printf(`{"elevated": %d, "ids": %s}`+"\n", len(ids), mustJSON(ids))
+}
+
 func runList(args []string) {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 	var (
@@ -182,6 +284,17 @@ func runIngest(args []string) {
 		os.Exit(exit.ToolError)
 	}
 
+	// Dry-run: parse without mutating the register.
+	if *dryRun {
+		entries, err := register.ParseFeedForward(data)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error parsing feed-forward: %v\n", err)
+			os.Exit(exit.ToolError)
+		}
+		fmt.Printf(`{"dry_run": true, "would_add": %d}`+"\n", len(entries))
+		return
+	}
+
 	path := registerPath(*program)
 	reg, err := register.Load(path, *program)
 	if err != nil {
@@ -193,11 +306,6 @@ func runIngest(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error ingesting feed-forward: %v\n", err)
 		os.Exit(exit.ToolError)
-	}
-
-	if *dryRun {
-		fmt.Printf(`{"dry_run": true, "would_add": %d}`+"\n", len(ids))
-		return
 	}
 
 	if err := reg.Save(path); err != nil {
@@ -218,6 +326,99 @@ func runIngest(args []string) {
 		Tool:        "specimen",
 		ToolVersion: version,
 	})
+}
+
+// runCatalog imports risks from a gemara RiskCatalog into the specimen register.
+// It is the primary path for ingesting structured risk data from Layer 3 artifacts.
+func runCatalog(args []string) {
+	fs := flag.NewFlagSet("catalog", flag.ExitOnError)
+	var (
+		program     = fs.String("program", "", "Program slug")
+		catalogPath = fs.String("catalog", "", "Path to gemara RiskCatalog YAML/JSON (required)")
+		dryRun      = fs.Bool("dry-run", false, "Print what would be added without writing")
+	)
+	fs.Parse(args) //nolint:errcheck
+
+	if *catalogPath == "" {
+		fmt.Fprintln(os.Stderr, "error: --catalog is required")
+		os.Exit(exit.ToolError)
+	}
+
+	cat, err := artifact.LoadRiskCatalog(*catalogPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading risk catalog: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+
+	if *dryRun {
+		fmt.Printf(`{"dry_run": true, "would_add": %d, "framework": %q}`+"\n",
+			len(cat.Risks), cat.Metadata.Description)
+		return
+	}
+
+	path := registerPath(*program)
+	reg, err := register.Load(path, *program)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading register: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+
+	var ids []string
+	for _, r := range cat.Risks {
+		likelihood, impact := severityToLikelihoodImpact(r.Severity.String())
+		owner := ""
+		if len(r.Owner.Responsible) > 0 {
+			owner = r.Owner.Responsible[0].Name
+		}
+		id := reg.Add(register.Risk{
+			Title:       r.Title,
+			Description: r.Description,
+			Source:      register.SourceCatalog,
+			Likelihood:  likelihood,
+			Impact:      impact,
+			Owner:       owner,
+			InferenceFlags: []string{
+				fmt.Sprintf("[IMPORTED from RiskCatalog: %s]", cat.Metadata.Id),
+			},
+		})
+		ids = append(ids, id)
+	}
+
+	if err := reg.Save(path); err != nil {
+		fmt.Fprintf(os.Stderr, "error saving register: %v\n", err)
+		os.Exit(exit.ToolError)
+	}
+
+	fmt.Printf(`{"imported": %d, "ids": %s, "catalog": %q}`+"\n",
+		len(ids), mustJSON(ids), cat.Metadata.Id)
+
+	_ = provenance.Write("logs/provenance.jsonl", provenance.Entry{
+		Spec:        "functions/risk-register-spec.md",
+		Output:      path,
+		OutputType:  "other",
+		Program:     *program,
+		Purpose:     fmt.Sprintf("specimen catalog: imported %d risks from %s", len(ids), *catalogPath),
+		Reusability: provenance.Instance,
+		QualityGate: provenance.Pass,
+		Tool:        "specimen",
+		ToolVersion: version,
+	})
+}
+
+// severityToLikelihoodImpact converts a gemara Severity string to (likelihood, impact)
+// values for the specimen 3×3 risk matrix. The mapping is conservative: higher
+// severity maps to higher combined scores.
+func severityToLikelihoodImpact(s string) (int, int) {
+	switch strings.ToLower(s) {
+	case "critical":
+		return 3, 3
+	case "high":
+		return 3, 2
+	case "medium":
+		return 2, 2
+	default: // low or invalid
+		return 1, 2
+	}
 }
 
 func runStatus(args []string) {
@@ -264,12 +465,20 @@ Usage:
 Subcommands:
   add      Add a risk entry (--title required)
   list     List and filter risks (--severity, --status, --owner)
+  update   Update status, owner, or notes on a risk (--id required)
+  close    Close a risk with resolution rationale (--id required)
+  elevate  Re-score risks from an assay EvaluationLog (--evaluation-log required)
   ingest   Ingest post-audit feed-forward JSON (--feed-forward required)
+  catalog  Import risks from a gemara RiskCatalog (--catalog required)
   status   Show register summary
 
 Examples:
-  specimen add --program iso42001 --title "No MFA on admin accounts" --severity high
+  specimen add --program iso42001 --title "No MFA on admin accounts"
   specimen list --program iso42001 --severity critical --format md
+  specimen update --program iso42001 --id RISK-042 --status in_progress --notes "MFA rollout started"
+  specimen close --program iso42001 --id RISK-042 --resolution "MFA enforced via Okta policy"
+  specimen elevate --program iso42001 --evaluation-log data/iso42001/assessments/2026-run-eval.json
   specimen ingest --program iso42001 --feed-forward post-audit/2026-feed-forward.json
+  specimen catalog --program iso42001 --catalog data/risks/org-risk-catalog.yaml
   specimen status --program iso42001`)
 }

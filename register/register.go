@@ -141,7 +141,7 @@ func (r *Register) nextID() string {
 	max := 0
 	for _, risk := range r.Risks {
 		var n int
-		fmt.Sscanf(risk.ID, "RISK-%d", &n)
+		_, _ = fmt.Sscanf(risk.ID, "RISK-%d", &n) //nolint:errcheck // best-effort parse of ID
 		if n > max {
 			max = n
 		}

@@ -19,6 +19,7 @@ import (
 	"github.com/Formulary-Labs/specimen/register"
 	"github.com/Formulary-Labs/substrate/artifact"
 	"github.com/Formulary-Labs/substrate/exit"
+	"github.com/Formulary-Labs/substrate/losstable"
 	"github.com/Formulary-Labs/substrate/provenance"
 )
 
@@ -77,16 +78,35 @@ func runAdd(args []string) {
 		owner          = fs.String("owner", "", "Risk owner")
 		controlID      = fs.String("control", "", "Related control ID")
 		dryRun         = fs.Bool("dry-run", false, "Print what would be added without writing")
-		assetValue     = fs.Float64("asset-value", 0, "FAIR: USD estimated value of the affected system")
+		assetValue     = fs.Float64("asset-value", 0, "FAIR: USD estimated value of the affected system (overrides loss table)")
 		exposureFactor = fs.Float64("exposure-factor", 0, "FAIR: fraction of asset value at risk (0.0–1.0)")
 		aro            = fs.Float64("aro", 0, "FAIR: Annual Rate of Occurrence (e.g. 0.1 = once per 10 years)")
 		dataClass      = fs.String("data-class", "", "Data classification: PII, PHI, confidential, public")
+		lossTablePath  = fs.String("loss-table", "", "Path to org loss table YAML for automatic AssetValue derivation")
+		recordCount    = fs.Int("record-count", 0, "Number of records at risk (used with --loss-table + --data-class)")
+		tier           = fs.String("tier", "", "System tier for downtime exposure: tier_1, tier_2, tier_3 (used with --loss-table)")
+		exposureHours  = fs.Float64("exposure-hours", 0, "Override assumed_exposure_hours from loss table")
 	)
 	fs.Parse(args) //nolint:errcheck
 
 	if *title == "" {
 		fmt.Fprintln(os.Stderr, "error: --title is required")
 		os.Exit(exit.ToolError)
+	}
+
+	// Derive AssetValue from loss table when provided and --asset-value not set directly.
+	derivedAV := *assetValue
+	if *lossTablePath != "" && derivedAV == 0 {
+		lt, err := losstable.Load(*lossTablePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error loading loss table: %v\n", err)
+			os.Exit(exit.ToolError)
+		}
+		if *recordCount > 0 && *dataClass != "" {
+			derivedAV = lt.AssetValueForRecords(*dataClass, *recordCount)
+		} else if *tier != "" {
+			derivedAV = lt.AssetValueForTier(*tier, *exposureHours)
+		}
 	}
 
 	path := registerPath(*program)
@@ -104,7 +124,7 @@ func runAdd(args []string) {
 		Impact:                 *impact,
 		Owner:                  *owner,
 		ControlID:              *controlID,
-		AssetValue:             *assetValue,
+		AssetValue:             derivedAV,
 		ExposureFactor:         *exposureFactor,
 		AnnualRateOfOccurrence: *aro,
 		DataClassification:     *dataClass,
@@ -146,10 +166,14 @@ func runUpdate(args []string) {
 		status         = fs.String("status", "", "New status: open, accepted, mitigated, closed")
 		owner          = fs.String("owner", "", "New owner")
 		notes          = fs.String("notes", "", "Append a progress note")
-		assetValue     = fs.Float64("asset-value", 0, "FAIR: USD estimated value of the affected system")
+		assetValue     = fs.Float64("asset-value", 0, "FAIR: USD estimated value of the affected system (overrides loss table)")
 		exposureFactor = fs.Float64("exposure-factor", 0, "FAIR: fraction of asset value at risk (0.0–1.0)")
 		aro            = fs.Float64("aro", 0, "FAIR: Annual Rate of Occurrence (e.g. 0.1 = once per 10 years)")
 		dataClass      = fs.String("data-class", "", "Data classification: PII, PHI, confidential, public")
+		lossTablePath  = fs.String("loss-table", "", "Path to org loss table YAML for automatic AssetValue derivation")
+		recordCount    = fs.Int("record-count", 0, "Number of records at risk (used with --loss-table + --data-class)")
+		tier           = fs.String("tier", "", "System tier for downtime exposure: tier_1, tier_2, tier_3 (used with --loss-table)")
+		exposureHours  = fs.Float64("exposure-hours", 0, "Override assumed_exposure_hours from loss table")
 	)
 	fs.Parse(args) //nolint:errcheck
 
@@ -157,6 +181,22 @@ func runUpdate(args []string) {
 		fmt.Fprintln(os.Stderr, "error: --id is required")
 		os.Exit(exit.ToolError)
 	}
+
+	// Derive AssetValue from loss table when provided and --asset-value not set directly.
+	derivedAV := *assetValue
+	if *lossTablePath != "" && derivedAV == 0 {
+		lt, err := losstable.Load(*lossTablePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error loading loss table: %v\n", err)
+			os.Exit(exit.ToolError)
+		}
+		if *recordCount > 0 && *dataClass != "" {
+			derivedAV = lt.AssetValueForRecords(*dataClass, *recordCount)
+		} else if *tier != "" {
+			derivedAV = lt.AssetValueForTier(*tier, *exposureHours)
+		}
+	}
+
 	path := registerPath(*program)
 	reg, err := register.Load(path, *program)
 	if err != nil {
@@ -167,8 +207,8 @@ func runUpdate(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(exit.ToolError)
 	}
-	if *assetValue != 0 || *exposureFactor != 0 || *aro != 0 || *dataClass != "" {
-		if err := reg.SetFAIR(*id, *assetValue, *exposureFactor, *aro, *dataClass); err != nil {
+	if derivedAV != 0 || *exposureFactor != 0 || *aro != 0 || *dataClass != "" {
+		if err := reg.SetFAIR(*id, derivedAV, *exposureFactor, *aro, *dataClass); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(exit.ToolError)
 		}
@@ -493,6 +533,7 @@ Subcommands:
 Examples:
   specimen add --program iso42001 --title "No MFA on admin accounts"
   specimen add --program iso42001 --title "PII breach on checkout" --asset-value 5000000 --exposure-factor 0.4 --aro 0.1 --data-class PII
+  specimen add --program iso42001 --title "Customer DB exposure" --loss-table org-loss-table.yaml --record-count 500000 --data-class pii --exposure-factor 0.3 --aro 0.05
   specimen list --program iso42001 --severity critical --format md
   specimen update --program iso42001 --id RISK-042 --status in_progress --notes "MFA rollout started"
   specimen update --program iso42001 --id RISK-042 --asset-value 2000000 --exposure-factor 0.3 --aro 0.05

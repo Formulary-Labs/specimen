@@ -97,12 +97,16 @@ type Register struct {
 	Risks         []Risk    `json:"risks"`
 }
 
+// RegisterSchemaVersion is the current schema version written to all risk
+// register files. Increment when fields are removed or renamed.
+const RegisterSchemaVersion = "1.0"
+
 // Load reads a risk register from disk. Returns an empty register if the
 // file does not exist.
 func Load(path, program string) (*Register, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return &Register{SchemaVersion: "1.0", Program: program}, nil
+		return &Register{SchemaVersion: RegisterSchemaVersion, Program: program}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading risk register %q: %w", path, err)
@@ -110,6 +114,16 @@ func Load(path, program string) (*Register, error) {
 	var r Register
 	if err := json.Unmarshal(data, &r); err != nil {
 		return nil, fmt.Errorf("parsing risk register %q: %w", path, err)
+	}
+	// Validate schema version so callers learn promptly when a future version
+	// of specimen writes a register that this version cannot safely read.
+	if r.SchemaVersion != "" && r.SchemaVersion != RegisterSchemaVersion {
+		return nil, fmt.Errorf("unsupported risk register schema version %q in %q (expected %s)",
+			r.SchemaVersion, path, RegisterSchemaVersion)
+	}
+	// Back-fill schema_version for registers written before versioning was added.
+	if r.SchemaVersion == "" {
+		r.SchemaVersion = RegisterSchemaVersion
 	}
 	return &r, nil
 }

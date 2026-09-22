@@ -72,6 +72,14 @@ type Risk struct {
 	Notes           []Note    `json:"notes,omitempty"`
 	AuditFindingRef string    `json:"audit_finding_ref,omitempty"` // from feed-forward
 	InferenceFlags  []string  `json:"inference_flags,omitempty"`
+
+	// FAIR quantitative risk fields (Factor Analysis of Information Risk).
+	// ALE is auto-computed as AssetValue × ExposureFactor × AnnualRateOfOccurrence.
+	AssetValue             float64 `json:"asset_value,omitempty"`
+	ExposureFactor         float64 `json:"exposure_factor,omitempty"`
+	AnnualRateOfOccurrence float64 `json:"annual_rate_of_occurrence,omitempty"`
+	ALE                    float64 `json:"ale,omitempty"`
+	DataClassification     string  `json:"data_classification,omitempty"`
 }
 
 // Note is an append-only progress note.
@@ -132,8 +140,19 @@ func (r *Register) Add(risk Risk) string {
 		risk.Status = StatusOpen
 	}
 	risk.Severity = computeSeverity(risk.Likelihood, risk.Impact)
+	risk.ALE = computeALE(risk.AssetValue, risk.ExposureFactor, risk.AnnualRateOfOccurrence)
 	r.Risks = append(r.Risks, risk)
 	return next
+}
+
+// computeALE returns the Annualized Loss Expectancy: AV × EF × ARO.
+// Returns 0 if any input is zero, keeping the field omitted for risks
+// without FAIR data.
+func computeALE(assetValue, exposureFactor, aro float64) float64 {
+	if assetValue == 0 || exposureFactor == 0 || aro == 0 {
+		return 0
+	}
+	return assetValue * exposureFactor * aro
 }
 
 // nextID returns the next unused RISK-NNN ID.
@@ -230,6 +249,47 @@ func (r *Register) Update(id, newStatus, owner, notes string) error {
 		}
 	}
 	return fmt.Errorf("risk %q not found", id)
+}
+
+// SetFAIR updates the FAIR quantitative fields on an existing risk and
+// recomputes ALE. Pass zero for any field to leave it unchanged.
+func (r *Register) SetFAIR(id string, assetValue, exposureFactor, aro float64, dataClass string) error {
+	for i := range r.Risks {
+		if r.Risks[i].ID == id {
+			if assetValue != 0 {
+				r.Risks[i].AssetValue = assetValue
+			}
+			if exposureFactor != 0 {
+				r.Risks[i].ExposureFactor = exposureFactor
+			}
+			if aro != 0 {
+				r.Risks[i].AnnualRateOfOccurrence = aro
+			}
+			if dataClass != "" {
+				r.Risks[i].DataClassification = dataClass
+			}
+			r.Risks[i].ALE = computeALE(
+				r.Risks[i].AssetValue,
+				r.Risks[i].ExposureFactor,
+				r.Risks[i].AnnualRateOfOccurrence,
+			)
+			r.Risks[i].Updated = time.Now().UTC()
+			return nil
+		}
+	}
+	return fmt.Errorf("risk %q not found", id)
+}
+
+// FilterByMinALE returns risks whose computed ALE is >= minALE.
+// Used by titer to cross-reference coverage gaps with financial exposure.
+func FilterByMinALE(risks []Risk, minALE float64) []Risk {
+	var out []Risk
+	for _, r := range risks {
+		if r.ALE >= minALE {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // Close marks a risk as closed and records the resolution rationale.

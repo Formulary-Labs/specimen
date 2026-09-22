@@ -68,15 +68,19 @@ func main() {
 func runAdd(args []string) {
 	fs := flag.NewFlagSet("add", flag.ExitOnError)
 	var (
-		program    = fs.String("program", "", "Program slug")
-		title      = fs.String("title", "", "Risk title (required)")
-		desc       = fs.String("description", "", "Risk description")
-		source     = fs.String("source", "explicit", "Source: coverage_gap, evidence_gap, owner_gap, explicit, inferred")
-		likelihood = fs.Int("likelihood", 2, "Likelihood 1-3")
-		impact     = fs.Int("impact", 2, "Impact 1-3")
-		owner      = fs.String("owner", "", "Risk owner")
-		controlID  = fs.String("control", "", "Related control ID")
-		dryRun     = fs.Bool("dry-run", false, "Print what would be added without writing")
+		program       = fs.String("program", "", "Program slug")
+		title         = fs.String("title", "", "Risk title (required)")
+		desc          = fs.String("description", "", "Risk description")
+		source        = fs.String("source", "explicit", "Source: coverage_gap, evidence_gap, owner_gap, explicit, inferred")
+		likelihood    = fs.Int("likelihood", 2, "Likelihood 1-3")
+		impact        = fs.Int("impact", 2, "Impact 1-3")
+		owner         = fs.String("owner", "", "Risk owner")
+		controlID     = fs.String("control", "", "Related control ID")
+		dryRun        = fs.Bool("dry-run", false, "Print what would be added without writing")
+		assetValue    = fs.Float64("asset-value", 0, "FAIR: USD estimated value of the affected system")
+		exposureFactor = fs.Float64("exposure-factor", 0, "FAIR: fraction of asset value at risk (0.0–1.0)")
+		aro           = fs.Float64("aro", 0, "FAIR: Annual Rate of Occurrence (e.g. 0.1 = once per 10 years)")
+		dataClass     = fs.String("data-class", "", "Data classification: PII, PHI, confidential, public")
 	)
 	fs.Parse(args) //nolint:errcheck
 
@@ -93,13 +97,17 @@ func runAdd(args []string) {
 	}
 
 	risk := register.Risk{
-		Title:       *title,
-		Description: *desc,
-		Source:      register.Source(*source),
-		Likelihood:  *likelihood,
-		Impact:      *impact,
-		Owner:       *owner,
-		ControlID:   *controlID,
+		Title:                  *title,
+		Description:            *desc,
+		Source:                 register.Source(*source),
+		Likelihood:             *likelihood,
+		Impact:                 *impact,
+		Owner:                  *owner,
+		ControlID:              *controlID,
+		AssetValue:             *assetValue,
+		ExposureFactor:         *exposureFactor,
+		AnnualRateOfOccurrence: *aro,
+		DataClassification:     *dataClass,
 	}
 
 	if *dryRun {
@@ -133,11 +141,15 @@ func runAdd(args []string) {
 func runUpdate(args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	var (
-		program = fs.String("program", "", "Program slug")
-		id      = fs.String("id", "", "Risk ID to update (required)")
-		status  = fs.String("status", "", "New status: open, accepted, mitigated, closed")
-		owner   = fs.String("owner", "", "New owner")
-		notes   = fs.String("notes", "", "Append a progress note")
+		program        = fs.String("program", "", "Program slug")
+		id             = fs.String("id", "", "Risk ID to update (required)")
+		status         = fs.String("status", "", "New status: open, accepted, mitigated, closed")
+		owner          = fs.String("owner", "", "New owner")
+		notes          = fs.String("notes", "", "Append a progress note")
+		assetValue     = fs.Float64("asset-value", 0, "FAIR: USD estimated value of the affected system")
+		exposureFactor = fs.Float64("exposure-factor", 0, "FAIR: fraction of asset value at risk (0.0–1.0)")
+		aro            = fs.Float64("aro", 0, "FAIR: Annual Rate of Occurrence (e.g. 0.1 = once per 10 years)")
+		dataClass      = fs.String("data-class", "", "Data classification: PII, PHI, confidential, public")
 	)
 	fs.Parse(args) //nolint:errcheck
 
@@ -154,6 +166,12 @@ func runUpdate(args []string) {
 	if err := reg.Update(*id, *status, *owner, *notes); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(exit.ToolError)
+	}
+	if *assetValue != 0 || *exposureFactor != 0 || *aro != 0 || *dataClass != "" {
+		if err := reg.SetFAIR(*id, *assetValue, *exposureFactor, *aro, *dataClass); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(exit.ToolError)
+		}
 	}
 	if err := reg.Save(path); err != nil {
 		fmt.Fprintf(os.Stderr, "error saving register: %v\n", err)
@@ -474,8 +492,10 @@ Subcommands:
 
 Examples:
   specimen add --program iso42001 --title "No MFA on admin accounts"
+  specimen add --program iso42001 --title "PII breach on checkout" --asset-value 5000000 --exposure-factor 0.4 --aro 0.1 --data-class PII
   specimen list --program iso42001 --severity critical --format md
   specimen update --program iso42001 --id RISK-042 --status in_progress --notes "MFA rollout started"
+  specimen update --program iso42001 --id RISK-042 --asset-value 2000000 --exposure-factor 0.3 --aro 0.05
   specimen close --program iso42001 --id RISK-042 --resolution "MFA enforced via Okta policy"
   specimen elevate --program iso42001 --evaluation-log data/iso42001/assessments/2026-run-eval.json
   specimen ingest --program iso42001 --feed-forward post-audit/2026-feed-forward.json

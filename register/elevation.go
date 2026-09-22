@@ -20,8 +20,8 @@ type evalLogEntry struct {
 	Control struct {
 		ReferenceID string `json:"reference_id"`
 	} `json:"control"`
-	Result  string `json:"result"` // "Passed" | "Failed" | "Needs Review"
-	Message string `json:"message"`
+	Result         string `json:"result"` // "Passed" | "Failed" | "Needs Review"
+	Message        string `json:"message"`
 	AssessmentLogs []struct {
 		ConfidenceLevel string `json:"confidence_level"` // "High" | "Medium" | "Low"
 		Recommendation  string `json:"recommendation"`

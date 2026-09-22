@@ -267,9 +267,9 @@ func printMD(risks []register.Risk) {
 func runIngest(args []string) {
 	fs := flag.NewFlagSet("ingest", flag.ExitOnError)
 	var (
-		program      = fs.String("program", "", "Program slug")
-		feedForward  = fs.String("feed-forward", "", "Path to post-audit feed-forward JSON (required)")
-		dryRun       = fs.Bool("dry-run", false, "Print what would be ingested without writing")
+		program     = fs.String("program", "", "Program slug")
+		feedForward = fs.String("feed-forward", "", "Path to post-audit feed-forward JSON (required)")
+		dryRun      = fs.Bool("dry-run", false, "Print what would be ingested without writing")
 	)
 	fs.Parse(args) //nolint:errcheck
 

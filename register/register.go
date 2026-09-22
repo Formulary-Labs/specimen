@@ -33,10 +33,10 @@ const (
 type Status string
 
 const (
-	StatusOpen     Status = "open"
-	StatusAccepted Status = "accepted"
+	StatusOpen      Status = "open"
+	StatusAccepted  Status = "accepted"
 	StatusMitigated Status = "mitigated"
-	StatusClosed   Status = "closed"
+	StatusClosed    Status = "closed"
 )
 
 // Severity is the risk severity derived from the 3x3 matrix.
@@ -55,8 +55,8 @@ type Risk struct {
 	Title           string    `json:"title"`
 	Description     string    `json:"description,omitempty"`
 	Source          Source    `json:"source"`
-	Likelihood      int       `json:"likelihood"`       // 1-3
-	Impact          int       `json:"impact"`           // 1-3
+	Likelihood      int       `json:"likelihood"` // 1-3
+	Impact          int       `json:"impact"`     // 1-3
 	Severity        Severity  `json:"severity"`
 	Status          Status    `json:"status"`
 	Owner           string    `json:"owner,omitempty"`
@@ -110,10 +110,10 @@ func (r *Register) Save(path string) error {
 	if err != nil {
 		return fmt.Errorf("marshaling register: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("creating register directory: %w", err)
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 // Note: filepath_dir helper removed — using filepath.Dir directly above.
@@ -196,13 +196,13 @@ func SortBySeverity(risks []Risk) []Risk {
 
 // FeedForwardEntry is a single entry from a post-audit feed-forward JSON.
 type FeedForwardEntry struct {
-	FindingID       string `json:"finding_id"`
-	Title           string `json:"title"`
-	Description     string `json:"description"`
-	ControlID       string `json:"control_id"`
-	Severity        string `json:"severity"`
+	FindingID        string `json:"finding_id"`
+	Title            string `json:"title"`
+	Description      string `json:"description"`
+	ControlID        string `json:"control_id"`
+	Severity         string `json:"severity"`
 	CorrectiveAction string `json:"corrective_action"`
-	Owner           string `json:"owner"`
+	Owner            string `json:"owner"`
 }
 
 // Update modifies fields on an existing risk entry by ID.

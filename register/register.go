@@ -19,6 +19,7 @@ import (
 // Source identifies where the risk originated.
 type Source string
 
+//nolint:revive // Source constants are self-documenting string identifiers.
 const (
 	SourceCoverageGap Source = "coverage_gap"
 	SourceEvidenceGap Source = "evidence_gap"
@@ -32,6 +33,7 @@ const (
 // Status is the current disposition of a risk.
 type Status string
 
+//nolint:revive // Status constants are self-documenting string identifiers.
 const (
 	StatusOpen      Status = "open"
 	StatusAccepted  Status = "accepted"
@@ -42,6 +44,7 @@ const (
 // Severity is the risk severity derived from the 3x3 matrix.
 type Severity string
 
+//nolint:revive // Severity constants are self-documenting string identifiers.
 const (
 	SeverityCritical Severity = "critical"
 	SeverityHigh     Severity = "high"

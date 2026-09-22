@@ -28,7 +28,7 @@ func TestElevateFromEvaluationLog_evidenceGap(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "eval.json")
 	// Empty evaluations — signal fires from evidence gap alone.
-	os.WriteFile(logPath, evalLogFixture(nil), 0o644) //nolint:errcheck
+	os.WriteFile(logPath, evalLogFixture(nil), 0o600) //nolint:errcheck
 
 	elevated, err := reg.ElevateFromEvaluationLog(logPath)
 	if err != nil {
@@ -64,7 +64,7 @@ func TestElevateFromEvaluationLog_pendingRef(t *testing.T) {
 
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "eval.json")
-	os.WriteFile(logPath, evalLogFixture(nil), 0o644) //nolint:errcheck
+	os.WriteFile(logPath, evalLogFixture(nil), 0o600) //nolint:errcheck
 
 	elevated, _ := reg.ElevateFromEvaluationLog(logPath)
 	if len(elevated) != 1 {
@@ -95,7 +95,7 @@ func TestElevateFromEvaluationLog_failedHighConfidence(t *testing.T) {
 	}
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "eval.json")
-	os.WriteFile(logPath, evalLogFixture([]map[string]any{entry}), 0o644) //nolint:errcheck
+	os.WriteFile(logPath, evalLogFixture([]map[string]any{entry}), 0o600) //nolint:errcheck
 
 	elevated, err := reg.ElevateFromEvaluationLog(logPath)
 	if err != nil {
@@ -128,7 +128,7 @@ func TestElevateFromEvaluationLog_needsReviewMedium(t *testing.T) {
 	}
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "eval.json")
-	os.WriteFile(logPath, evalLogFixture([]map[string]any{entry}), 0o644) //nolint:errcheck
+	os.WriteFile(logPath, evalLogFixture([]map[string]any{entry}), 0o600) //nolint:errcheck
 
 	reg.ElevateFromEvaluationLog(logPath) //nolint:errcheck
 	if reg.Risks[0].Likelihood != 2 {
@@ -152,7 +152,7 @@ func TestElevateFromEvaluationLog_passedNoChange(t *testing.T) {
 	}
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "eval.json")
-	os.WriteFile(logPath, evalLogFixture([]map[string]any{entry}), 0o644) //nolint:errcheck
+	os.WriteFile(logPath, evalLogFixture([]map[string]any{entry}), 0o600) //nolint:errcheck
 
 	elevated, _ := reg.ElevateFromEvaluationLog(logPath)
 	if len(elevated) != 0 {

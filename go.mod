@@ -2,7 +2,7 @@ module github.com/Formulary-Labs/specimen
 
 go 1.26.6
 
-require github.com/Formulary-Labs/substrate v0.4.0
+require github.com/Formulary-Labs/substrate v0.5.0
 
 require (
 	github.com/gemaraproj/go-gemara v0.10.0 // indirect

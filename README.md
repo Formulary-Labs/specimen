@@ -6,11 +6,55 @@ Every risk gets a stable `RISK-NNN` identifier. None are reused after deletion. 
 go get github.com/Formulary-Labs/specimen
 ```
 
+## In the ecosystem
+
+Formulary is a **pick-and-choose** suite of small, single-purpose CLIs. Install only the tools your workflow needs; each runs standalone. Shared contracts live in [`substrate`](https://github.com/Formulary-Labs/substrate). Optional Make pipelines (or an agent such as `regimen`) compose tools into a run — plug-and-play, not all-or-nothing.
+
+**This tool:** risk register with stable RISK-NNN IDs and feed-forward ingest.  
+**Works with:** `antidote --emit specimen` upstream; `exhibit` / `vital` downstream.  
+**Pipeline stage:** packet / close.
+
+
 ## What it does
 
 `specimen` manages a program's risk register as a JSON file at `data/[program]/risks.json`. It assigns stable `RISK-NNN` identifiers, derives severity from a 3×3 likelihood/impact matrix, and supports bulk ingestion of post-audit findings via feed-forward.
 
-## Usage
+## CLI
+
+`specimen` is a full risk-register CLI. Severity is always derived from likelihood × impact — it is never set directly:
+
+```bash
+# Add a risk (severity derived, stable RISK-NNN assigned)
+specimen add --program my-isms --title "Evidence backlog" \
+  --source coverage_gap --likelihood 2 --impact 3 --owner security-team
+
+# Update with FAIR ALE derivation from an org loss table
+specimen update --program my-isms --id RISK-004 --status accepted \
+  --loss-table org-loss-table.yaml --data-class PII --record-count 50000 \
+  --notes "Accepted for Q4; compensating control in place"
+
+# Close with resolution rationale
+specimen close --program my-isms --id RISK-002 --resolution "Control implemented and evidenced"
+
+# Elevate satisfied assessment controls into risks (from an assay EvaluationLog)
+specimen elevate --program my-isms --evaluation-log output/assessment.json
+
+# Bulk-ingest post-audit feed-forward (antidote --emit specimen output)
+specimen ingest --program my-isms --feed-forward out/feed-forward.json
+
+# Ingest a gemara RiskCatalog as register entries
+specimen catalog --program my-isms --catalog risks.yaml
+
+# List with filters
+specimen list --program my-isms --severity high --status open --format md
+
+# Register summary
+specimen status --program my-isms
+```
+
+`add`, `ingest`, and `catalog` support `--dry-run` (print what would be written without writing). `update --loss-table` derives `AssetValue` (FAIR ALE) from the shared org loss table in `substrate/losstable`, using `--data-class` and `--record-count`.
+
+## Library usage
 
 ```go
 import "github.com/Formulary-Labs/specimen/register"
